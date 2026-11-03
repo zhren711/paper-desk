@@ -1,5 +1,6 @@
 import express from 'express';
 import crypto from 'node:crypto';
+import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
@@ -41,6 +42,14 @@ app.use(express.json({ limit: '1mb' }));
 /* ---------- 静态页面 ---------- */
 const PUBLIC = path.join(__dirname, 'public');
 const INDEX = path.join(PUBLIC, 'index.html');
+// 给 app.js / style.css 加上版本号，重新部署后浏览器会立刻用上新代码
+const ASSET_VERSION = crypto.createHash('sha1')
+  .update(fs.readFileSync(path.join(PUBLIC, 'app.js')))
+  .update(fs.readFileSync(path.join(PUBLIC, 'style.css')))
+  .digest('hex').slice(0, 10);
+const INDEX_HTML = fs.readFileSync(INDEX, 'utf8')
+  .replace('href="/style.css"', `href="/style.css?v=${ASSET_VERSION}"`)
+  .replace('src="/app.js"', `src="/app.js?v=${ASSET_VERSION}"`);
 app.use(express.static(PUBLIC, { index: false, maxAge: '10m' }));
 app.get('/vendor/jszip.min.js', (req, res) => {
   res.setHeader('Cache-Control', 'public, max-age=604800');
@@ -48,7 +57,7 @@ app.get('/vendor/jszip.min.js', (req, res) => {
 });
 app.get(['/', '/p/:id'], (req, res) => {
   res.setHeader('Cache-Control', 'no-cache');
-  res.sendFile(INDEX);
+  res.type('html').send(INDEX_HTML);
 });
 app.get('/healthz', (req, res) => res.json({ ok: true }));
 
