@@ -35,6 +35,7 @@ app.use((req, res, next) => {
   res.setHeader('X-Frame-Options', 'DENY');
   next();
 });
+app.use('/api/ai/outline', express.json({ limit: '45mb' }));
 app.use(express.json({ limit: '1mb' }));
 
 /* ---------- 静态页面 ---------- */
@@ -75,6 +76,7 @@ function limiter(max, windowMs) {
 }
 const aiLimit = limiter(AI_PER_HOUR, 3600_000);
 const newPaperLimit = limiter(NEW_PAPERS_PER_HOUR, 3600_000);
+const outlineLimit = limiter(Number(process.env.OUTLINES_PER_HOUR) || 20, 3600_000);
 
 app.get('/api/config', (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
@@ -142,10 +144,11 @@ app.delete('/api/papers/:id/sections/:sid', async (req, res) => {
 });
 
 /* ---------- 润色 / 翻译（流式，NDJSON） ---------- */
+app.post('/api/ai/outline', outlineLimit);
 app.post('/api/ai/:task', aiLimit, async (req, res) => {
   let job;
   try { job = buildPrompt(req.params.task, req.body); }
-  catch (e) { return res.status(e.status || 400).json({ code: 'bad_request', message: e.message }); }
+  catch (e) { return res.status(e.status || 400).json({ code: e.status === 413 ? 'too_big' : 'bad_request', message: e.message }); }
   if (!ai.ready) return res.status(503).json({ code: 'no_key', message: '服务器没有配置 ANTHROPIC_API_KEY' });
 
   res.status(200);
