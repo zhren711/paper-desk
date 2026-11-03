@@ -351,3 +351,57 @@ a.brand:hover b{color:var(--accent)}
 .imp-col > .btn{align-self:flex-start}
 #panelImport{max-height:72vh}
 .imp-apply{padding-bottom:4px}
+
+/* ---------- editor: left sidebar with the active section's outline ---------- */
+.editor{overflow:hidden;display:grid;grid-template-columns:minmax(0,1fr)}
+.editor.has-side{grid-template-columns:clamp(250px,19vw,320px) minmax(0,1fr)}
+.ed-main{min-height:0;overflow:auto;container-type:inline-size}
+.ed-side{min-height:0;overflow:auto;background:var(--sheet-2);border-right:1px solid var(--rule);padding-block:22px 28px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:16px;display:flex;flex-direction:column;gap:8px}
+.side-eyebrow{font-size:11px;font-weight:600;letter-spacing:.14em;color:var(--ink-3)}
+.side-title{display:flex;align-items:baseline;gap:8px;min-width:0}
+.side-num{font-family:var(--f-en);font-size:22px;line-height:1;color:var(--accent)}
+.side-zh{font-family:var(--f-zh);font-size:18px;font-weight:700;overflow-wrap:anywhere}
+.side-en{margin-top:-4px;font-family:var(--f-en);font-style:italic;font-size:14px;color:var(--ink-2)}
+.side-en.missing{font-family:var(--f-ui);font-style:normal;font-size:12px;color:var(--ink-3)}
+.side-lbl{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-top:10px;font-size:11.5px;font-weight:600;letter-spacing:.06em;color:var(--ink-2)}
+.side-count{font-family:var(--f-mono);font-weight:400;letter-spacing:0;color:var(--ink-3);font-variant-numeric:tabular-nums}
+.side-note{display:block;width:100%;min-height:0;resize:none;overflow:hidden;border:1px solid var(--rule);background:var(--sheet);border-radius:4px;padding:7px 9px;font-size:13px;line-height:1.6}
+.side-note:focus,.side-pt:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+.side-note::placeholder,.side-pt::placeholder{color:var(--ink-3)}
+.side-points{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+.side-point{display:grid;grid-template-columns:10px auto minmax(0,1fr) auto;column-gap:6px;row-gap:2px;align-items:start;padding:8px 6px 5px 9px;border:1px solid var(--rule);border-radius:5px;background:var(--sheet);transition:border-color .15s}
+.side-point:hover{border-color:var(--rule-2)}
+.side-point .pmark{margin-top:8px}
+.side-point.is-covered .pmark{background:var(--accent);border-color:var(--accent)}
+.side-pt-n{margin-top:4px;font-family:var(--f-mono);font-size:11px;color:var(--ink-3)}
+.side-pt{display:block;width:100%;min-height:0;resize:none;overflow:hidden;border:1px solid transparent;background:transparent;border-radius:3px;padding:1px 4px;font-family:var(--f-zh);font-size:13.5px;line-height:1.65}
+.side-point .pt-x{opacity:0}
+.side-point:hover .pt-x,.side-point:focus-within .pt-x{opacity:1}
+.side-pt-tools{grid-column:3 / span 2;display:flex;gap:4px}
+.side-pt-count,.side-pt-write{border:0;background:transparent;border-radius:3px;padding:1px 6px;font-size:11.5px;color:var(--ink-3)}
+.side-pt-count:not(:disabled){color:var(--accent)}
+.side-pt-count:disabled{cursor:default}
+.side-pt-count:not(:disabled):hover,.side-pt-write:hover{background:var(--accent-soft);color:var(--accent)}
+.side-hint{margin:4px 0 0;font-size:11.5px;line-height:1.6;color:var(--ink-3)}
+.side-nav{display:flex;justify-content:space-between;gap:8px;margin-top:auto;padding-top:16px}
+.para.is-linked{background:var(--accent-soft-2)}
+
+@container (max-width: 1000px){
+  .cols-head{display:none}
+  .para{grid-template-columns:52px minmax(0,1fr);grid-template-areas:"g d" "g p" "g e" ". f"}
+  .cell-label{display:block}
+}
+@container (max-width: 560px){
+  .para{grid-template-columns:minmax(0,1fr);grid-template-areas:"g" "d" "p" "e" "f"}
+  .p-gutter{flex-direction:row;align-items:center;padding-top:0}
+  .composer{grid-template-columns:minmax(0,1fr)}
+  .comp-gutter{display:none}
+  .sec-empty{margin-left:0}
+}
+@media (max-width:759px){
+  .editor,.editor.has-side{display:block;overflow:visible}
+  .ed-main{overflow:visible}
+  .ed-side{border-right:0;border-bottom:1px solid var(--rule);padding-right:max(16px,env(safe-area-inset-right,0px))}
+  .side-nav{display:none}
+}
+.ed-side > *{flex-shrink:0}

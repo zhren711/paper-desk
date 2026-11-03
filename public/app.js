@@ -30,13 +30,13 @@ function lsDel(k) { try { localStorage.removeItem(k); } catch {} }
 
 function autosize(t) {
   if (!t || !t.isConnected) return;
-  const sc = $('#editor'); const top = sc ? sc.scrollTop : 0; const wy = window.scrollY;
+  const sc = $('#edMain') || $('#editor'); const top = sc ? sc.scrollTop : 0; const wy = window.scrollY;
   t.style.height = 'auto';
   t.style.height = (t.scrollHeight + 2) + 'px';
   if (sc) sc.scrollTop = top;
   if (window.scrollY !== wy) window.scrollTo(0, wy);
 }
-function autosizeAll(root) { requestAnimationFrame(() => $$('textarea.ta, textarea.pt-ta, textarea.note-ta', root).forEach(autosize)); }
+function autosizeAll(root) { requestAnimationFrame(() => $$('textarea.ta, textarea.pt-ta, textarea.note-ta, textarea.side-pt, textarea.side-note', root).forEach(autosize)); }
 
 function wordCount(en) {
   const t = str(en).replace(/\\[a-zA-Z]+\*?(\[[^\]]*\])?(\{[^}]*\})?/g, ' ').replace(/\$[^$]*\$/g, ' x ');
@@ -195,7 +195,7 @@ let sections = {};
 let activeId = null;
 let readOnly = false;
 let showDiff = lsGet('pd:diff', true);
-let collapsed = lsGet('pd:collapsed', false);
+let collapsed = lsGet('pd:collapsed', true);
 let exportScope = 'sec';
 const rtMap = new Map();
 const R = id => { if (!rtMap.has(id)) rtMap.set(id, {}); return rtMap.get(id); };
@@ -681,6 +681,7 @@ function outlineCard(sec, i) {
   title.addEventListener('input', () => {
     sec.titleZh = title.value; touchSec(sec.id);
     const e = document.getElementById('secZh-' + sec.id); if (e && document.activeElement !== e) e.value = title.value;
+    syncSideTitle(sec);
   });
   const left = h('button', { type: 'button', title: '前移', 'aria-label': '前移本节', 'data-edit': '', disabled: i === 0 }, '←');
   const right = h('button', { type: 'button', title: '后移', 'aria-label': '后移本节', 'data-edit': '', disabled: i === paper.order.length - 1 }, '→');
@@ -690,14 +691,12 @@ function outlineCard(sec, i) {
   num.addEventListener('click', () => setActive(sec.id));
 
   const note = h('textarea', { class: 'note-ta', id: 'nt-' + sec.id, rows: '1', 'data-edit': '', placeholder: '本节作用（可选）', 'aria-label': `第 ${i + 1} 节的作用`, value: sec.note });
-  note.addEventListener('input', () => { sec.note = note.value; touchSec(sec.id); autosize(note); });
+  note.addEventListener('input', () => { sec.note = note.value; touchSec(sec.id); autosize(note); syncValue('snt-' + sec.id, note.value); });
   const pts = h('ol', { class: 'points' }, sec.points.map((pt, k) => pointItem(sec, pt, k)));
   const addPt = h('button', { class: 'add-point', type: 'button', 'data-edit': '' }, '+ 论点');
   addPt.addEventListener('click', e => {
     e.stopPropagation();
-    sec.points.push({ id: uid(), text: '' }); touchSec(sec.id);
-    renderCard(sec.id, c => { const t = $$('.pt-ta', c).pop(); if (t) t.focus(); });
-    if (activeId === sec.id) refreshPointOptions(sec);
+    insertPoint(sec, sec.points.length, 'card');
   });
   const st = secStats(sec);
   const card = h('article', { class: 'ocard' + (sec.id === activeId ? ' is-active' : ''), 'data-id': sec.id },
@@ -717,30 +716,43 @@ const footText = st => `${st.n} 段 · ${st.done} 已完成 · ${fmtNum(st.words
 function pointItem(sec, pt, k) {
   const covered = sec.paragraphs.some(p => p.point === pt.id);
   const ta = h('textarea', { class: 'pt-ta', id: 'pt-' + pt.id, rows: '1', 'data-edit': '', placeholder: '写下一个要论证的观点', 'aria-label': `观点 p${k + 1}`, value: pt.text });
-  ta.addEventListener('input', () => { pt.text = ta.value; touchSec(sec.id); autosize(ta); if (activeId === sec.id) refreshPointOptions(sec); });
-  ta.addEventListener('keydown', e => {
-    if (e.isComposing) return;
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      sec.points.splice(k + 1, 0, { id: uid(), text: '' }); touchSec(sec.id);
-      renderCard(sec.id, c => { const t = $$('.pt-ta', c)[k + 1]; if (t) t.focus(); });
-      if (activeId === sec.id) refreshPointOptions(sec);
-    } else if (e.key === 'Backspace' && ta.value === '') { e.preventDefault(); removePoint(sec, k, true); }
-  });
+  ta.addEventListener('input', () => { pt.text = ta.value; touchSec(sec.id); autosize(ta); syncValue('spt-' + pt.id, ta.value); if (activeId === sec.id) refreshPointOptions(sec); });
+  ta.addEventListener('keydown', e => pointKeys(e, sec, k, ta, 'card'));
   const x = h('button', { class: 'pt-x', type: 'button', title: '删除观点', 'aria-label': `删除观点 p${k + 1}`, 'data-edit': '' }, '×');
   x.addEventListener('click', e => { e.stopPropagation(); removePoint(sec, k, false); });
   return h('li', { class: 'point' + (covered ? ' is-covered' : ''), 'data-pid': pt.id }, h('span', { class: 'pmark', 'aria-hidden': 'true', title: covered ? '已有段落论证' : '尚无段落' }), ta, x);
 }
-function removePoint(sec, k, focusPrev) {
+function pointKeys(e, sec, k, ta, where) {
+  if (e.isComposing) return;
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); insertPoint(sec, k + 1, where); }
+  else if (e.key === 'Backspace' && ta.value === '') { e.preventDefault(); removePoint(sec, k, true, where); }
+}
+function insertPoint(sec, at, where) {
+  const pt = { id: uid(), text: '' };
+  sec.points.splice(at, 0, pt); touchSec(sec.id);
+  renderCard(sec.id, where === 'card' ? () => { const t = document.getElementById('pt-' + pt.id); if (t) t.focus(); } : null);
+  if (activeId === sec.id) {
+    renderSide(sec);
+    refreshPointOptions(sec);
+    if (where === 'side') requestAnimationFrame(() => { const t = document.getElementById('spt-' + pt.id); if (t) t.focus(); });
+  }
+}
+function removePoint(sec, k, focusPrev, where = 'card') {
   const [pt] = sec.points.splice(k, 1); if (!pt) return;
   sec.paragraphs.forEach(p => { if (p.point === pt.id) p.point = ''; });
   touchSec(sec.id);
-  renderCard(sec.id, c => {
-    if (!focusPrev) return;
-    const t = $$('.pt-ta', c)[Math.max(0, k - 1)];
-    if (t) { t.focus(); t.setSelectionRange(t.value.length, t.value.length); }
-  });
-  if (activeId === sec.id) { refreshPointOptions(sec); sec.paragraphs.forEach(p => refreshPara(sec, p)); }
+  const prev = sec.points[Math.max(0, k - 1)];
+  const focusIt = id => { const t = document.getElementById(id); if (t) { t.focus(); t.setSelectionRange(t.value.length, t.value.length); } };
+  renderCard(sec.id, focusPrev && prev && where === 'card' ? () => focusIt('pt-' + prev.id) : null);
+  if (activeId === sec.id) {
+    renderSide(sec);
+    refreshPointOptions(sec); sec.paragraphs.forEach(p => refreshPara(sec, p));
+    if (focusPrev && prev && where === 'side') requestAnimationFrame(() => focusIt('spt-' + prev.id));
+  }
+}
+function syncValue(id, value) {
+  const el = document.getElementById(id);
+  if (el && document.activeElement !== el && el.value !== value) { el.value = value; autosize(el); }
 }
 function renderCard(id, after) {
   const old = $(`.ocard[data-id="${id}"]`); const sec = sections[id]; if (!old || !sec) return;
@@ -749,6 +761,7 @@ function renderCard(id, after) {
   if (after) requestAnimationFrame(() => after(fresh));
 }
 function updateCardStats(id) {
+  if (id === activeId && sections[id]) refreshSide(sections[id]);
   const card = $(`.ocard[data-id="${id}"]`); const sec = sections[id]; if (!card || !sec) return;
   const st = secStats(sec);
   $('.foot-txt', card).textContent = footText(st);
@@ -782,17 +795,104 @@ function setActive(id, opts = {}) {
 function renderEditor() {
   const ed = $('#editor');
   const inner = h('div', { class: 'ed-in wrap' });
-  if (!loaded) { inner.append(h('p', { class: 'loading' }, '正在打开你的论文…')); ed.replaceChildren(inner); return; }
-  const sec = activeSec();
-  if (!sec) { inner.append(welcome()); ed.replaceChildren(inner); applyRO(inner); return; }
+  const main = h('div', { class: 'ed-main', id: 'edMain' }, inner);
+  const sec = loaded ? activeSec() : null;
+  ed.classList.toggle('has-side', !!sec);
+  if (!loaded) { inner.append(h('p', { class: 'loading' }, '正在打开你的论文…')); ed.replaceChildren(main); return; }
+  if (!sec) { inner.append(welcome()); ed.replaceChildren(main); applyRO(inner); return; }
   const paras = h('div', { class: 'paras', id: 'paras' }, sec.paragraphs.map(p => paraRow(sec, p)));
   inner.append(secHead(sec), colsHead(), paras);
-  if (!sec.paragraphs.length) inner.append(h('p', { class: 'sec-empty', id: 'secEmpty' }, '本节还没有段落。对照上方大纲里的观点，一段一段写下中文。'));
+  if (!sec.paragraphs.length) inner.append(h('p', { class: 'sec-empty', id: 'secEmpty' }, '本节还没有段落。对照左边的观点，一段一段写下中文。'));
   if (!readOnly) inner.append(composer(sec));
-  ed.replaceChildren(inner);
-  ed.scrollTop = 0;
+  const side = h('aside', { class: 'ed-side', id: 'edSide', 'aria-label': '本节思路' });
+  ed.replaceChildren(side, main);
+  renderSide(sec);
+  main.scrollTop = 0;
   applyRO(inner);
   autosizeAll(inner);
+}
+
+/* ---------- left sidebar: the active section's outline ---------- */
+function renderSide(sec) {
+  const side = $('#edSide'); if (!side || sec.id !== activeId) return;
+  const i = secIndex(sec.id);
+  const note = h('textarea', { class: 'side-note', id: 'snt-' + sec.id, rows: '2', 'data-edit': '', placeholder: '这一节要完成什么？', 'aria-label': '本节作用', value: sec.note });
+  note.addEventListener('input', () => { sec.note = note.value; touchSec(sec.id); autosize(note); syncValue('nt-' + sec.id, note.value); });
+  const list = h('ol', { class: 'side-points' }, sec.points.map((pt, k) => sidePoint(sec, pt, k)));
+  const add = h('button', { class: 'add-point', type: 'button', 'data-edit': '' }, '+ 添加观点');
+  add.addEventListener('click', () => insertPoint(sec, sec.points.length, 'side'));
+  const prevId = paper.order[i - 1], nextId = paper.order[i + 1];
+  const nav = (id, label) => {
+    const b = h('button', { class: 'btn ghost tiny', type: 'button', disabled: !id }, label);
+    if (id) b.addEventListener('click', () => setActive(id));
+    return b;
+  };
+  side.replaceChildren(
+    h('div', { class: 'side-eyebrow' }, '本节思路'),
+    h('div', { class: 'side-title' }, h('span', { class: 'side-num' }, '§' + (i + 1)), h('b', { class: 'side-zh' }, sec.titleZh.trim() || '未命名')),
+    h('div', { class: 'side-en' + (sec.titleEn.trim() ? '' : ' missing') }, sec.titleEn.trim() || '英文标题待译'),
+    h('label', { class: 'side-lbl', for: 'snt-' + sec.id }, '本节作用'),
+    note,
+    h('div', { class: 'side-lbl' }, h('span', {}, '要论证的观点'), h('span', { class: 'side-count' })),
+    list,
+    readOnly ? null : add,
+    h('p', { class: 'side-hint' }, '点「写」会把新段落对应到这个观点；点段数可以跳到已写的段落。'),
+    h('div', { class: 'side-nav' }, nav(prevId, '← 上一节'), nav(nextId, '下一节 →')),
+  );
+  refreshSide(sec);
+  applyRO(side);
+  autosizeAll(side);
+}
+function sidePoint(sec, pt, k) {
+  const ta = h('textarea', { class: 'side-pt', id: 'spt-' + pt.id, rows: '1', 'data-edit': '', placeholder: '写下一个要论证的观点', 'aria-label': `观点 p${k + 1}`, value: pt.text });
+  ta.addEventListener('input', () => { pt.text = ta.value; touchSec(sec.id); autosize(ta); syncValue('pt-' + pt.id, ta.value); refreshPointOptions(sec); });
+  ta.addEventListener('keydown', e => pointKeys(e, sec, k, ta, 'side'));
+  const count = h('button', { class: 'side-pt-count', type: 'button' });
+  count.addEventListener('click', () => jumpToPoint(sec, pt.id));
+  const write = h('button', { class: 'side-pt-write', type: 'button', title: '按这个观点写一段新的', 'data-edit': '' }, '写');
+  write.addEventListener('click', () => writeForPoint(pt.id));
+  const x = h('button', { class: 'pt-x', type: 'button', title: '删除观点', 'aria-label': `删除观点 p${k + 1}`, 'data-edit': '' }, '×');
+  x.addEventListener('click', () => removePoint(sec, k, false, 'side'));
+  const li = h('li', { class: 'side-point', 'data-pid': pt.id },
+    h('span', { class: 'pmark', 'aria-hidden': 'true' }), h('span', { class: 'side-pt-n' }, 'p' + (k + 1)), ta, x,
+    h('div', { class: 'side-pt-tools' }, count, readOnly ? null : write));
+  li.addEventListener('mouseenter', () => highlightPoint(pt.id, true));
+  li.addEventListener('mouseleave', () => highlightPoint(pt.id, false));
+  return li;
+}
+function refreshSide(sec) {
+  const side = $('#edSide'); if (!side || sec.id !== activeId) return;
+  let covered = 0;
+  $$('.side-point', side).forEach(li => {
+    const n = sec.paragraphs.filter(p => p.point === li.dataset.pid).length;
+    if (n) covered++;
+    li.classList.toggle('is-covered', n > 0);
+    const c = $('.side-pt-count', li);
+    c.textContent = n ? `${n} 段` : '未写';
+    c.disabled = !n;
+    c.title = n ? '跳到对应的段落' : '还没有段落对应这个观点';
+  });
+  const total = sec.points.filter(p => p.text.trim()).length || sec.points.length;
+  const cnt = $('.side-count', side); if (cnt) cnt.textContent = sec.points.length ? `${covered} / ${total} 已写` : '';
+  const zh = $('.side-zh', side); if (zh) zh.textContent = sec.titleZh.trim() || '未命名';
+  const en = $('.side-en', side); if (en) { en.textContent = sec.titleEn.trim() || '英文标题待译'; en.classList.toggle('missing', !sec.titleEn.trim()); }
+}
+function syncSideTitle(sec) { if (sec.id === activeId) refreshSide(sec); }
+function highlightPoint(pid, on) {
+  const sec = activeSec(); if (!sec) return;
+  sec.paragraphs.forEach(p => { const row = document.getElementById('para-' + p.id); if (row) row.classList.toggle('is-linked', on && p.point === pid); });
+}
+function jumpToPoint(sec, pid) {
+  const p = sec.paragraphs.find(x => x.point === pid); if (!p) return;
+  const row = document.getElementById('para-' + p.id); if (!row) return;
+  row.scrollIntoView({ block: 'center', behavior: reduceMotion ? 'auto' : 'smooth' });
+  row.classList.remove('flash'); void row.offsetWidth; if (!reduceMotion) row.classList.add('flash');
+}
+function writeForPoint(pid) {
+  const sel = $('#compPoint'), ta = $('#compText'); if (!sel || !ta) return;
+  sel.value = pid;
+  ta.scrollIntoView({ block: 'center', behavior: reduceMotion ? 'auto' : 'smooth' });
+  ta.focus({ preventScroll: true });
 }
 
 function welcome() {
@@ -814,6 +914,7 @@ function secHead(sec) {
   zh.addEventListener('input', () => {
     sec.titleZh = zh.value; touchSec(sec.id);
     const c = document.getElementById('ct-' + sec.id); if (c && document.activeElement !== c) c.value = zh.value;
+    syncSideTitle(sec);
   });
   const en = h('input', { class: 'sec-en', id: 'secEn-' + sec.id, 'data-edit': '', value: sec.titleEn, placeholder: 'English section title', 'aria-label': '章节英文标题' });
   en.addEventListener('input', () => { sec.titleEn = en.value; touchSec(sec.id); updateCardStats(sec.id); });
