@@ -6,7 +6,14 @@
 - 大纲：每节写下本节作用和要论证的观点；段落标注对应观点后，大纲里的圆点会变成实心，一眼看出哪些观点还没写
 - 润色：参考本节大纲、上一段和学科领域，标出改动（绿色为新增，红色为删除），并用“批”字批注说明修正了哪些逻辑问题
 - 翻译：学术英文，保留 `\cite{}`、公式等 LaTeX 命令，自动转义特殊字符；术语表里的词始终用你指定的译法
-- 导出：复制本节或全文 LaTeX，或下载 Overleaf 项目 .zip（`main.tex` + `sections/*.tex`）
+- 插入工具栏（正文上方）：
+  - 插图：选 PDF、PNG 或 JPG（PDF 矢量图会显示第一页预览），写中文图注后自动译成英文，并生成 `\label{fig:…}`
+  - 表格：可视化编辑（可以直接从 Excel 或 Google 表格复制一块区域粘贴进来，单元格里可以写 `$公式$`），也可以直接粘贴 LaTeX 表格代码；导出用 booktabs 三线表
+  - 公式：行内或独立公式，边输入边预览，独立公式可以加标签，之后用 `\eqref{}` 引用
+  - 引用：从参考文献库列表里搜索、多选，插入 `\cite{}`、`\citep{}` 或 `\citet{}`
+  - 参考文献库：导入 .bib 文件或粘贴 BibTeX，导出 `references.bib`
+- 英文排版预览：右栏默认显示每段英文的排版效果（公式、编号、引用 [1]、图表编号），鼠标移到引用上可以看到文献信息，点图表引用会跳到对应的图表；点一下预览即可修改 LaTeX
+- 导出：复制本节或全文 LaTeX，或下载 Overleaf 项目 .zip（`main.tex` + `sections/*.tex` + `figures/` + `references.bib`）
 - 每篇论文有一个私密链接，可以换设备打开，也可以发给合作者一起改
 - 同一篇论文在两个窗口同时修改时，后保存的一方会暂停保存并提示刷新，不会悄悄覆盖对方
 
@@ -80,6 +87,7 @@ docker run -d --name paper-desk -p 3000:3000 \
 - 从参考文章生成大纲需要读完整篇 PDF，每页约几千 token。三篇各 20 页左右的论文，一次大约花 0.2 到 0.5 美元。
 - 提示词都在服务器端拼装，浏览器只能提交论文内容，别人无法把你的网站当成通用的 Claude 接口来用。
 - 论文链接里的 16 位编号是随机生成的，无法猜出。但拿到链接的人都能编辑，请只发给你信任的人。
+- 插图文件保存在数据库里，单个不超过 12 MB，每篇论文合计不超过 150 MB。Neon 免费版有 0.5 GB 存储，图多的话注意用量。
 - 没有设置 `ACCESS_CODE` 时，任何知道网址的人都能新建论文并消耗额度。
 
 ## 关于 Overleaf
@@ -87,7 +95,7 @@ docker run -d --name paper-desk -p 3000:3000 \
 目前通过导出与 Overleaf 配合：
 
 1. 更新已有项目：复制本节 LaTeX，粘贴到 Overleaf 中对应的 `.tex` 文件。
-2. 新建项目：下载 .zip，在 Overleaf 选 New Project → Upload Project。
+2. 新建项目：下载 .zip，在 Overleaf 选 New Project → Upload Project。图片在 `figures/`，参考文献在 `references.bib`，`main.tex` 已经写好 natbib 和 `\bibliography{references}`。
 
 自动双向同步需要 Overleaf 付费版的 Git 集成。之后可以在服务器上加一个任务，把英文稿定时推送到 Overleaf 项目的 Git 仓库。
 
@@ -96,7 +104,7 @@ docker run -d --name paper-desk -p 3000:3000 \
 ```
 server.js          Express 服务器：页面、论文接口、润色与翻译接口
 lib/store.js       存储（SQLite / PostgreSQL），带版本号防止互相覆盖
-lib/prompts.js     润色、翻译、标题翻译的提示词
+lib/prompts.js     润色、翻译、标题与图注翻译、生成大纲的提示词
 lib/ai.js          调用 Claude API（流式输出）
 lib/example.js     示例论文
 public/            前端页面（index.html、app.js、style.css）

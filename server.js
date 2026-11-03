@@ -59,6 +59,8 @@ app.get(['/', '/p/:id'], (req, res) => {
   res.setHeader('Cache-Control', 'no-cache');
   res.type('html').send(INDEX_HTML);
 });
+app.use('/vendor/katex', express.static(path.dirname(require.resolve('katex')), { maxAge: '30d', immutable: true }));
+app.use('/vendor/pdfjs', express.static(path.join(path.dirname(require.resolve('pdfjs-dist/package.json')), 'build'), { maxAge: '30d', immutable: true }));
 app.get('/healthz', (req, res) => res.json({ ok: true }));
 
 /* ---------- 访问码与限流 ---------- */
@@ -141,6 +143,44 @@ async function putDoc(req, res, key) {
   res.json({ rev: r.rev });
 }
 app.put('/api/papers/:id/meta', (req, res) => putDoc(req, res, 'meta'));
+app.put('/api/papers/:id/bib', (req, res) => putDoc(req, res, 'bib'));
+
+/* ---------- 图片与 PDF 图（插图用） ---------- */
+const ASSET_TYPES = { 'application/pdf': [0x25, 0x50, 0x44, 0x46], 'image/png': [0x89, 0x50, 0x4e, 0x47], 'image/jpeg': [0xff, 0xd8, 0xff] };
+const MAX_ASSET = 12 * 1024 * 1024;
+const MAX_ASSETS_PER_PAPER = 150 * 1024 * 1024;
+const AID_RE = /^[A-Za-z0-9]{12}$/;
+app.post('/api/papers/:id/assets', express.raw({ type: () => true, limit: MAX_ASSET }), async (req, res) => {
+  const { id } = req.params;
+  if (!ID_RE.test(id) || !(await store.exists(id))) return notFound(res);
+  const mime = String(req.get('content-type') || '').split(';')[0].trim().toLowerCase();
+  const magic = ASSET_TYPES[mime];
+  const buf = req.body;
+  if (!magic) return res.status(415).json({ code: 'bad_type', message: '只支持 PDF、PNG、JPG' });
+  if (!Buffer.isBuffer(buf) || !buf.length || !magic.every((b, i) => buf[i] === b)) return res.status(400).json({ code: 'bad_file', message: '文件内容和类型不符' });
+  if ((await store.assetsSize(id)) + buf.length > MAX_ASSETS_PER_PAPER) return res.status(413).json({ code: 'too_many', message: '这篇论文的图片总量已达上限' });
+  let name = 'figure';
+  try { name = decodeURIComponent(String(req.get('x-file-name') || 'figure')); } catch {}
+  name = name.replace(/[\\/\u0000-\u001f]/g, '').slice(0, 120) || 'figure';
+  const aid = newId().slice(0, 12);
+  await store.putAsset(id, { id: aid, name, mime, size: buf.length, data: buf });
+  res.status(201).json({ id: aid, name, mime, size: buf.length });
+});
+app.get('/api/papers/:id/assets/:aid', async (req, res) => {
+  const { id, aid } = req.params;
+  if (!ID_RE.test(id) || !AID_RE.test(aid)) return notFound(res);
+  const a = await store.getAsset(id, aid);
+  if (!a) return notFound(res);
+  res.setHeader('Content-Type', a.mime);
+  res.setHeader('Cache-Control', 'private, max-age=31536000, immutable');
+  res.send(Buffer.from(a.data));
+});
+app.delete('/api/papers/:id/assets/:aid', async (req, res) => {
+  const { id, aid } = req.params;
+  if (!ID_RE.test(id) || !AID_RE.test(aid)) return notFound(res);
+  await store.deleteAsset(id, aid);
+  res.json({ ok: true });
+});
 app.put('/api/papers/:id/sections/:sid', (req, res) => {
   if (!SID_RE.test(req.params.sid)) return res.status(400).json({ code: 'bad_request', message: '章节编号不合法' });
   return putDoc(req, res, 's:' + req.params.sid);
