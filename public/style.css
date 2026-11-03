@@ -307,3 +307,47 @@ a.brand:hover b{color:var(--accent)}
   .top-actions .btn{padding:5px 9px;font-size:12px}
   .outline-hint{display:none}
 }
+
+/* ---------- import reference articles ---------- */
+.import-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:20px 32px;align-items:start}
+.imp-col{display:flex;flex-direction:column;gap:10px;min-width:0}
+.imp-col textarea.inp{resize:vertical;line-height:1.7}
+.drop{display:flex;align-items:center;gap:12px;flex-wrap:wrap;border:1.5px dashed var(--rule-2);border-radius:6px;padding:16px;background:var(--sheet);color:var(--ink-3);font-size:12.5px;transition:border-color .15s,background .15s}
+.drop.over{border-color:var(--accent);background:var(--accent-soft-2)}
+.imp-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.imp-list:empty{display:none}
+.imp-list li{display:grid;grid-template-columns:auto minmax(0,1fr) auto auto;gap:10px;align-items:center;background:var(--sheet);border:1px solid var(--rule);border-radius:4px;padding:5px 6px 5px 10px}
+.imp-kind{font-family:var(--f-mono);font-size:10.5px;color:var(--accent);border:1px solid var(--accent-line);border-radius:3px;padding:0 5px;line-height:1.6}
+.imp-name{font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.imp-size{font-family:var(--f-mono);font-size:11px;color:var(--ink-3);font-variant-numeric:tabular-nums}
+.imp-paste{display:flex;flex-direction:column;gap:6px;align-items:flex-start}
+.imp-paste textarea{width:100%}
+.imp-result{margin-top:20px;padding-top:18px;border-top:1px solid var(--rule);display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.6fr);gap:20px 32px;align-items:start}
+.imp-result h4{margin:0 0 8px;font-family:var(--f-zh);font-size:14px;font-weight:700;letter-spacing:.04em}
+.imp-analysis ol{margin:0;padding-left:1.2em;display:flex;flex-direction:column;gap:8px;font-size:13px;line-height:1.7;color:var(--ink-2)}
+.imp-analysis b{color:var(--ink);font-weight:600}
+.imp-common{margin:12px 0 0;font-size:13px;line-height:1.7;color:var(--ink-2);background:var(--accent-soft-2);border-radius:4px;padding:8px 10px}
+.imp-secs{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,240px),1fr));gap:10px}
+.imp-secs > li{border:1px solid var(--rule);border-radius:5px;background:var(--sheet);padding:9px 11px;display:flex;flex-direction:column;gap:4px;min-width:0}
+.imp-sec-t{display:flex;align-items:baseline;gap:6px;flex-wrap:wrap}
+.imp-sec-t b{font-family:var(--f-zh);font-size:14.5px}
+.imp-sec-t i{font-family:var(--f-en);font-size:13px;color:var(--ink-2)}
+.imp-sec-n{font-family:var(--f-en);color:var(--accent)}
+.imp-purpose{font-size:12px;color:var(--ink-3)}
+.imp-secs ul{margin:2px 0 0;padding-left:1.1em;font-size:12.5px;line-height:1.6;display:flex;flex-direction:column;gap:2px}
+.imp-secs mark,.imp-analysis mark{background:var(--warn-soft);color:var(--warn);border-radius:2px;padding:0 1px}
+.imp-apply{grid-column:1/-1;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.imp-apply .help{flex:1 1 260px}
+.note-ta{border:0;background:transparent;resize:none;overflow:hidden;font-size:12px;line-height:1.5;color:var(--ink-3);padding:1px 4px;margin-top:-2px;border-radius:3px;min-height:0;height:20px}
+.note-ta:focus{outline:none;background:var(--paper);color:var(--ink-2)}
+.note-ta::placeholder{color:var(--ink-3);opacity:.7}
+.outline.is-collapsed .note-ta{display:none}
+.sel.mv{max-width:150px}
+.toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translate(-50%,16px);opacity:0;pointer-events:none;z-index:50;background:var(--ink);color:var(--paper);padding:10px 16px;border-radius:6px;font-size:13px;line-height:1.5;max-width:min(92vw,560px);box-shadow:0 6px 24px rgba(0,0,0,.18);transition:opacity .2s,transform .2s}
+.toast.show{opacity:1;transform:translate(-50%,0)}
+@media (max-width:759px){
+  .import-grid,.imp-result{grid-template-columns:minmax(0,1fr)}
+}
+.imp-col > .btn{align-self:flex-start}
+#panelImport{max-height:72vh}
+.imp-apply{padding-bottom:4px}

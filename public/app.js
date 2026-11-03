@@ -36,7 +36,7 @@ function autosize(t) {
   if (sc) sc.scrollTop = top;
   if (window.scrollY !== wy) window.scrollTo(0, wy);
 }
-function autosizeAll(root) { requestAnimationFrame(() => $$('textarea.ta, textarea.pt-ta', root).forEach(autosize)); }
+function autosizeAll(root) { requestAnimationFrame(() => $$('textarea.ta, textarea.pt-ta, textarea.note-ta', root).forEach(autosize)); }
 
 function wordCount(en) {
   const t = str(en).replace(/\\[a-zA-Z]+\*?(\[[^\]]*\])?(\{[^}]*\})?/g, ' ').replace(/\$[^$]*\$/g, ' x ');
@@ -163,10 +163,10 @@ const TEMPLATE = [
   ['结论', 'Conclusion', ['总结贡献', '局限与未来工作']],
 ];
 
-function blankPaper() { return { title: '', titleEn: '', field: '', strength: 'medium', spelling: 'US', glossary: [], order: [], zhComments: true }; }
+function blankPaper() { return { title: '', titleEn: '', field: '', brief: '', strength: 'medium', spelling: 'US', glossary: [], order: [], zhComments: true }; }
 function normPaper(m) {
   const o = Object.assign(blankPaper(), m || {});
-  o.title = str(o.title); o.titleEn = str(o.titleEn); o.field = str(o.field);
+  o.title = str(o.title); o.titleEn = str(o.titleEn); o.field = str(o.field); o.brief = str(o.brief);
   o.glossary = Array.isArray(o.glossary) ? o.glossary.map(g => ({ zh: str(g && g.zh), en: str(g && g.en) })) : [];
   o.order = Array.isArray(o.order) ? o.order.map(String) : [];
   if (!STRENGTH[o.strength]) o.strength = 'medium';
@@ -181,13 +181,13 @@ function normPara(p) {
 function normSec(id, s) {
   s = s || {};
   return {
-    id, titleZh: str(s.titleZh), titleEn: str(s.titleEn),
+    id, titleZh: str(s.titleZh), titleEn: str(s.titleEn), note: str(s.note),
     points: Array.isArray(s.points) ? s.points.map(x => ({ id: str(x && x.id) || uid(), text: str(x && x.text) })) : [],
     paragraphs: Array.isArray(s.paragraphs) ? s.paragraphs.map(normPara) : [],
   };
 }
-function newSection(titleZh = '新章节', titleEn = '', points = ['']) {
-  return { id: 's' + uid(), titleZh, titleEn, points: points.map(t => ({ id: uid(), text: t })), paragraphs: [] };
+function newSection(titleZh = '新章节', titleEn = '', points = [''], note = '') {
+  return { id: 's' + uid(), titleZh, titleEn, note, points: points.map(t => ({ id: uid(), text: t })), paragraphs: [] };
 }
 
 let paper = blankPaper();
@@ -228,12 +228,12 @@ const lastJSON = new Map(), revs = new Map(), timers = new Map(), inflight = new
 let saveErr = null, retryTimer = null;
 
 function metaBody() {
-  const { title, titleEn, field, strength, spelling, glossary, order, zhComments } = paper;
-  return { title, titleEn, field, strength, spelling, glossary, order, zhComments };
+  const { title, titleEn, field, brief, strength, spelling, glossary, order, zhComments } = paper;
+  return { title, titleEn, field, brief, strength, spelling, glossary, order, zhComments };
 }
 function secBody(id) {
   const s = sections[id]; if (!s) return null;
-  return { titleZh: s.titleZh, titleEn: s.titleEn, points: s.points, paragraphs: s.paragraphs.map(p => ({ id: p.id, zh: p.zh, polished: p.polished, notes: p.notes, en: p.en, point: p.point, polishedFrom: p.polishedFrom, enFrom: p.enFrom })) };
+  return { titleZh: s.titleZh, titleEn: s.titleEn, note: s.note, points: s.points, paragraphs: s.paragraphs.map(p => ({ id: p.id, zh: p.zh, polished: p.polished, notes: p.notes, en: p.en, point: p.point, polishedFrom: p.polishedFrom, enFrom: p.enFrom })) };
 }
 function touch(key) {
   if (readOnly || !loaded) return;
@@ -396,8 +396,8 @@ function handleAIError(p, e) {
 function glossary() { return paper.glossary.filter(g => g.zh.trim() && g.en.trim()); }
 function ctxPayload(sec) {
   return {
-    paper: { title: paper.title, titleEn: paper.titleEn, field: paper.field, strength: paper.strength, spelling: paper.spelling, glossary: glossary() },
-    section: { index: secIndex(sec.id), titleZh: sec.titleZh, titleEn: sec.titleEn, points: sec.points.map(x => x.text) },
+    paper: { title: paper.title, titleEn: paper.titleEn, field: paper.field, brief: paper.brief, strength: paper.strength, spelling: paper.spelling, glossary: glossary() },
+    section: { index: secIndex(sec.id), titleZh: sec.titleZh, titleEn: sec.titleEn, note: sec.note, points: sec.points.map(x => x.text) },
   };
 }
 function polishPayload(sec, p) {
@@ -575,13 +575,14 @@ $('#btnLink').addEventListener('click', async () => {
 });
 
 function togglePanel(which) {
-  const map = { settings: ['#btnSettings', '#panelSettings'], export: ['#btnExport', '#panelExport'] };
+  const map = { settings: ['#btnSettings', '#panelSettings'], export: ['#btnExport', '#panelExport'], import: ['#btnImport', '#panelImport'] };
   for (const [k, [b, p]] of Object.entries(map)) {
     const open = k === which ? $(p).hidden : false;
     $(p).hidden = !open; $(b).setAttribute('aria-expanded', String(open));
   }
   if (!$('#panelExport').hidden) refreshExport();
   if (!$('#panelSettings').hidden) renderSettings();
+  if (!$('#panelImport').hidden) openImport();
 }
 $('#btnSettings').addEventListener('click', () => togglePanel('settings'));
 $('#btnExport').addEventListener('click', () => togglePanel('export'));
@@ -613,6 +614,9 @@ function renderSettings() {
   const field = h('input', { class: 'inp', id: 'fField', 'data-edit': '', placeholder: '例如：交通工程、机器学习、材料科学', value: paper.field });
   field.addEventListener('input', () => { paper.field = field.value; touchMeta(); });
 
+  const brief = h('textarea', { class: 'inp', id: 'fBrief', rows: '3', 'data-edit': '', placeholder: '研究什么问题、用什么方法、主要结果是什么', value: paper.brief });
+  brief.addEventListener('input', () => { paper.brief = brief.value; touchMeta(); });
+
   const sHelp = h('p', { class: 'help' }, STRENGTH[paper.strength].help);
   const strength = segControl(Object.entries(STRENGTH).map(([k, v]) => [k, v.label]), paper.strength, v => { paper.strength = v; sHelp.textContent = STRENGTH[v].help; touchMeta(); }, '润色力度');
   const spelling = segControl([['US', 'American'], ['UK', 'British']], paper.spelling, v => { paper.spelling = v; touchMeta(); }, '英文拼写');
@@ -640,6 +644,7 @@ function renderSettings() {
   body.replaceChildren(
     h('div', { class: 'field' }, h('label', { class: 'lbl', for: 'fTitleEn' }, '英文题目'), h('div', { class: 'row' }, titleEn, tBtn)),
     h('div', { class: 'field' }, h('label', { class: 'lbl', for: 'fField' }, '学科领域'), field, h('p', { class: 'help' }, '润色和翻译会按这个领域的写作习惯处理。')),
+    h('div', { class: 'field' }, h('label', { class: 'lbl', for: 'fBrief' }, '研究内容简述'), brief, h('p', { class: 'help' }, '生成大纲和润色时都会参考。')),
     h('div', { class: 'field' }, h('span', { class: 'lbl' }, '润色力度'), strength, sHelp),
     h('div', { class: 'field' }, h('span', { class: 'lbl' }, '英文拼写'), spelling, h('p', { class: 'help' }, '例如 optimize / optimise，color / colour。')),
     h('div', { class: 'field glossary' }, h('span', { class: 'lbl' }, '术语表'), glList, h('div', {}, addGl)),
@@ -664,6 +669,7 @@ function renderOutline() {
     cards.push(add);
   }
   track.replaceChildren(...cards);
+  $('#btnImport').hidden = readOnly;
   applyRO(track);
   autosizeAll(track);
   updatePaperStats();
@@ -683,6 +689,8 @@ function outlineCard(sec, i) {
   const num = h('button', { class: 'ocard-num', type: 'button', title: '打开本节' }, '§' + (i + 1));
   num.addEventListener('click', () => setActive(sec.id));
 
+  const note = h('textarea', { class: 'note-ta', id: 'nt-' + sec.id, rows: '1', 'data-edit': '', placeholder: '本节作用（可选）', 'aria-label': `第 ${i + 1} 节的作用`, value: sec.note });
+  note.addEventListener('input', () => { sec.note = note.value; touchSec(sec.id); autosize(note); });
   const pts = h('ol', { class: 'points' }, sec.points.map((pt, k) => pointItem(sec, pt, k)));
   const addPt = h('button', { class: 'add-point', type: 'button', 'data-edit': '' }, '+ 论点');
   addPt.addEventListener('click', e => {
@@ -695,7 +703,7 @@ function outlineCard(sec, i) {
   const card = h('article', { class: 'ocard' + (sec.id === activeId ? ' is-active' : ''), 'data-id': sec.id },
     h('header', { class: 'ocard-head' }, num, title, h('div', { class: 'ocard-move' }, left, right)),
     h('div', { class: 'ocard-en' + (sec.titleEn.trim() ? '' : ' missing') }, sec.titleEn.trim() || '英文标题待译'),
-    pts, addPt,
+    note, pts, addPt,
     h('footer', { class: 'ocard-foot' },
       h('span', { class: 'foot-txt' }, footText(st)),
       h('div', { class: 'bar', 'aria-hidden': 'true' }, h('i', { style: `width:${st.n ? Math.round(st.done / st.n * 100) : 0}%` }))),
@@ -788,13 +796,15 @@ function renderEditor() {
 }
 
 function welcome() {
-  const b1 = h('button', { class: 'btn primary', type: 'button' }, '套用常见结构');
+  const b0 = h('button', { class: 'btn primary', type: 'button' }, '从参考文章生成大纲');
+  const b1 = h('button', { class: 'btn', type: 'button' }, '套用常见结构');
   const b2 = h('button', { class: 'btn', type: 'button' }, '添加空白章节');
+  b0.addEventListener('click', () => { if ($('#panelImport').hidden) togglePanel('import'); });
   b1.addEventListener('click', applyTemplate); b2.addEventListener('click', addSection);
   return h('div', { class: 'welcome' },
     h('h1', {}, '从思路开始写'),
-    h('p', {}, '先在上方大纲列出章节，并为每一节写下要论证的观点。然后在这里一段一段用中文写；每段完成后，会先润色中文逻辑，再译成可以直接放进 LaTeX 的英文。'),
-    readOnly ? null : h('div', { class: 'btns' }, b1, b2),
+    h('p', {}, '先定好大纲：可以上传 1 到 3 篇你想借鉴的论文，按它们的论证逻辑生成；也可以套用常见结构，或自己逐节填写。然后在这里一段一段用中文写，每段完成后会先润色中文逻辑，再译成可以直接放进 LaTeX 的英文。'),
+    readOnly ? null : h('div', { class: 'btns' }, b0, b1, b2),
     h('p', { class: 'small' }, '常见结构：引言 · 相关工作 · 方法 · 实验 · 结论'));
 }
 
@@ -1009,7 +1019,15 @@ function renderActions(sec, p, row) {
   const down = h('button', { class: 'btn ghost icon-btn', type: 'button', title: '下移', 'aria-label': '下移本段', disabled: i === sec.paragraphs.length - 1 }, '↓');
   up.addEventListener('click', () => movePara(sec, p, -1));
   down.addEventListener('click', () => movePara(sec, p, 1));
-  box.append(up, down, confirmBtn('删除', '确认删除', () => deletePara(sec, p), 'btn tiny ghost danger'));
+  box.append(up, down);
+  if (paper.order.length > 1) {
+    const mv = h('select', { class: 'sel mv', id: 'mv-' + p.id, 'aria-label': '移到其他章节', title: '移到其他章节' },
+      h('option', { value: '' }, '移到…'),
+      paper.order.filter(id => id !== sec.id && sections[id]).map(id => h('option', { value: id }, `§${secIndex(id) + 1} ${clip(sections[id].titleZh.trim() || '未命名', 10)}`)));
+    mv.addEventListener('change', () => { if (mv.value) moveParaToSection(sec, p, mv.value); });
+    box.append(mv);
+  }
+  box.append(confirmBtn('删除', '确认删除', () => deletePara(sec, p), 'btn tiny ghost danger'));
 }
 function refreshAllRows() {
   const sec = activeSec(); if (!sec) return;
@@ -1081,6 +1099,25 @@ function deletePara(sec, p) {
   renumber(sec); updateCardStats(sec.id); updatePaperStats();
 }
 
+function moveParaToSection(sec, p, targetId) {
+  const target = sections[targetId]; const r = R(p.id);
+  if (!target || r.busy || r.queued) return;
+  const i = sec.paragraphs.indexOf(p); if (i < 0) return;
+  sec.paragraphs.splice(i, 1); p.point = ''; target.paragraphs.push(p);
+  touchSec(sec.id); touchSec(targetId);
+  const row = document.getElementById('para-' + p.id); if (row) row.remove();
+  renumber(sec); updateCardStats(sec.id); updateCardStats(targetId); updatePaperStats();
+  toast(`已移到 §${secIndex(targetId) + 1} ${target.titleZh.trim() || '未命名'} 的末尾`);
+}
+
+let toastTimer;
+function toast(text) {
+  let el = $('#toast');
+  if (!el) { el = h('div', { id: 'toast', class: 'toast', role: 'status' }); document.body.append(el); }
+  el.textContent = text; el.classList.add('show');
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => el.classList.remove('show'), 5000);
+}
+
 function confirmBtn(label, confirmLabel, action, cls = 'btn tiny danger') {
   const b = h('button', { class: cls, type: 'button', 'data-edit': '' }, label); let t = null;
   b.addEventListener('click', () => {
@@ -1140,6 +1177,205 @@ async function deletePaper() {
     readOnly = false;
     notice('del', '没能删除这篇论文，请检查网络后再试。');
   }
+}
+
+/* ================= import reference articles → outline ================= */
+const imp = { docs: [], ctl: null, result: null, timer: null };
+const MAX_PDF = 10 * 1024 * 1024, MAX_TOTAL = 24 * 1024 * 1024;
+const fmtSize = n => (n >= 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB');
+function impMsg(t, bad) { const m = $('#impMsg'); m.textContent = t; m.classList.toggle('bad', !!bad); }
+function readFileAs(file, how) {
+  return new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => res(r.result); r.onerror = () => rej(r.error);
+    if (how === 'dataurl') r.readAsDataURL(file); else r.readAsText(file);
+  });
+}
+async function addImportFiles(files) {
+  for (const f of Array.from(files)) {
+    if (imp.docs.length >= 3) { impMsg('最多三篇参考文章。', true); break; }
+    const isPdf = f.type === 'application/pdf' || /\.pdf$/i.test(f.name);
+    const isText = /\.(txt|md|markdown|tex)$/i.test(f.name) || /^text\//.test(f.type);
+    if (!isPdf && !isText) { impMsg(`${f.name} 的格式不支持，请上传 PDF、.tex、.txt 或 .md。`, true); continue; }
+    if (isPdf && f.size > MAX_PDF) { impMsg(`${f.name} 超过 10 MB，请压缩，或只保留正文部分。`, true); continue; }
+    if (imp.docs.reduce((a, d) => a + d.size, 0) + f.size > MAX_TOTAL) { impMsg('文件总大小超过 24 MB。', true); continue; }
+    try {
+      if (isPdf) {
+        const url = String(await readFileAs(f, 'dataurl'));
+        imp.docs.push({ name: f.name, kind: 'pdf', size: f.size, data: url.slice(url.indexOf(',') + 1) });
+      } else {
+        imp.docs.push({ name: f.name, kind: 'text', size: f.size, data: String(await readFileAs(f, 'text')) });
+      }
+      impMsg('');
+    } catch { impMsg(`没能读取 ${f.name}。`, true); }
+  }
+  renderImpList();
+}
+function renderImpList() {
+  const ul = $('#impList');
+  ul.replaceChildren(...imp.docs.map((d, i) => {
+    const x = h('button', { class: 'btn ghost icon-btn', type: 'button', title: '移除', 'aria-label': `移除 ${d.name}` }, '×');
+    x.addEventListener('click', () => { imp.docs.splice(i, 1); renderImpList(); });
+    return h('li', {}, h('span', { class: 'imp-kind' }, d.kind === 'pdf' ? 'PDF' : '文本'), h('span', { class: 'imp-name' }, d.name), h('span', { class: 'imp-size' }, fmtSize(d.size)), x);
+  }));
+  const left = 3 - imp.docs.length;
+  $('#impPick').disabled = left <= 0;
+  $('#impPick').textContent = imp.docs.length ? `再添加（还可 ${left} 篇）` : '选择文件';
+  $('#impRun').disabled = !imp.docs.length || !!imp.ctl;
+}
+function openImport() {
+  const b = $('#impBrief'); if (document.activeElement !== b) b.value = paper.brief;
+  if (!aiUsable()) impMsg('润色与翻译暂不可用，暂时不能生成大纲。', true);
+  renderImpList();
+}
+$('#btnImport').addEventListener('click', () => togglePanel('import'));
+$('#impPick').addEventListener('click', () => $('#impFile').click());
+$('#impFile').addEventListener('change', e => { addImportFiles(e.target.files); e.target.value = ''; });
+$('#impDrop').addEventListener('dragover', e => { e.preventDefault(); $('#impDrop').classList.add('over'); });
+$('#impDrop').addEventListener('dragleave', () => $('#impDrop').classList.remove('over'));
+$('#impDrop').addEventListener('drop', e => { e.preventDefault(); $('#impDrop').classList.remove('over'); if (e.dataTransfer && e.dataTransfer.files.length) addImportFiles(e.dataTransfer.files); });
+$('#impPasteToggle').addEventListener('click', () => {
+  const box = $('#impPasteBox'); box.hidden = !box.hidden;
+  $('#impPasteToggle').setAttribute('aria-expanded', String(!box.hidden));
+  if (!box.hidden) $('#impPaste').focus();
+});
+$('#impPasteAdd').addEventListener('click', () => {
+  const t = $('#impPaste').value.trim();
+  if (t.length < 200) { impMsg('粘贴的内容太短，至少需要一篇文章的主要部分。', true); return; }
+  if (imp.docs.length >= 3) { impMsg('最多三篇参考文章。', true); return; }
+  imp.docs.push({ name: `粘贴的文章 ${imp.docs.length + 1}`, kind: 'text', size: new Blob([t]).size, data: t });
+  $('#impPaste').value = ''; $('#impPasteBox').hidden = true; $('#impPasteToggle').setAttribute('aria-expanded', 'false');
+  impMsg(''); renderImpList();
+});
+$('#impBrief').addEventListener('input', e => { paper.brief = e.target.value; touchMeta(); });
+$('#impRun').addEventListener('click', runImport);
+$('#impStop').addEventListener('click', () => imp.ctl && imp.ctl.abort());
+
+function setImpBusy(busy) {
+  $('#impStop').hidden = !busy;
+  $('#impRun').textContent = busy ? '生成中…' : '分析并生成大纲';
+  renderImpList();
+}
+async function runImport() {
+  if (!imp.docs.length) { impMsg('请先添加至少一篇参考文章。', true); return; }
+  if (imp.ctl) return;
+  if (!(await aiReady())) { impMsg('润色与翻译暂不可用，暂时不能生成大纲。', true); return; }
+  const ctl = new AbortController(); imp.ctl = ctl;
+  setImpBusy(true); $('#impResult').hidden = true; imp.result = null;
+  const t0 = Date.now(); let chars = 0;
+  const tick = () => {
+    const sec = Math.round((Date.now() - t0) / 1000);
+    impMsg(chars ? `正在整理大纲…已写出 ${fmtNum(chars)} 字符（${sec} 秒）` : `正在阅读参考文章…${sec} 秒。文章较长时需要一两分钟，请不要关闭页面。`);
+  };
+  tick(); imp.timer = setInterval(tick, 1000);
+  try {
+    const payload = {
+      paper: { title: paper.title, field: paper.field, brief: paper.brief },
+      current: paper.order.map(id => sections[id]).filter(Boolean).map(s => ({ titleZh: s.titleZh, points: s.points.map(x => x.text).filter(t => t.trim()) })),
+      docs: imp.docs.map(d => ({ name: d.name, kind: d.kind, data: d.data })),
+    };
+    const { text, truncated } = await streamAI('outline', payload, { signal: ctl.signal, onText: t => { chars = t.length; } });
+    const result = parseOutline(text);
+    if (!result) throw { code: truncated ? 'truncated' : 'bad_output' };
+    imp.result = result;
+    clearInterval(imp.timer);
+    impMsg('');
+    renderImpResult();
+  } catch (e) {
+    clearInterval(imp.timer);
+    const code = e && e.code;
+    if (code === 'cancelled') impMsg('已停止。');
+    else if (code === 'unauthorized') impMsg('');
+    else if (OFF_CODES[code]) { aiOff(OFF_CODES[code]); impMsg(OFF_CODES[code], true); }
+    else impMsg(({
+      too_long: '参考文章太长，超出了一次能读取的范围。请减少篇数，或只上传正文部分。',
+      too_big: '文件太大，请压缩，或减少篇数后再试。',
+      truncated: '大纲太长被截断了，请减少参考文章后重试。',
+      bad_output: '没能读懂返回的大纲，请再试一次。',
+    })[code] || errCopy(code), true);
+  } finally {
+    clearInterval(imp.timer); imp.ctl = null; setImpBusy(false);
+  }
+}
+function parseOutline(text) {
+  const t = str(text).trim().replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '');
+  const a = t.indexOf('{'), b = t.lastIndexOf('}');
+  if (a < 0 || b <= a) return null;
+  let o; try { o = JSON.parse(t.slice(a, b + 1)); } catch { return null; }
+  const secs = (Array.isArray(o.sections) ? o.sections : []).map(s => ({
+    titleZh: str(s && s.titleZh).trim(), titleEn: str(s && s.titleEn).trim(), purpose: str(s && s.purpose).trim(),
+    points: (Array.isArray(s && s.points) ? s.points : []).map(x => str(x).trim()).filter(Boolean).slice(0, 8),
+  })).filter(s => s.titleZh || s.points.length).slice(0, 12);
+  if (!secs.length) return null;
+  return {
+    analysis: (Array.isArray(o.analysis) ? o.analysis : []).map(x => ({ source: str(x && x.source).trim(), structure: str(x && x.structure).trim() })).filter(x => x.structure).slice(0, 3),
+    common: str(o.common).trim(),
+    sections: secs,
+  };
+}
+function withSlots(text) {
+  const out = []; let last = 0;
+  text.replace(/【[^】]{1,40}】/g, (m, i) => { if (i > last) out.push(text.slice(last, i)); out.push(h('mark', {}, m)); last = i + m.length; return m; });
+  if (last < text.length) out.push(text.slice(last));
+  return out;
+}
+function renderImpResult() {
+  const r = imp.result; const box = $('#impResult');
+  if (!r) { box.hidden = true; return; }
+  const hasOld = paper.order.length > 0;
+  const withParas = paper.order.filter(id => sections[id] && sections[id].paragraphs.length).length;
+  const replace = hasOld
+    ? confirmBtn('替换当前大纲', '确认替换？再点一次', () => applyOutline('replace'), 'btn primary')
+    : h('button', { class: 'btn primary', type: 'button' }, '使用这份大纲');
+  if (!hasOld) replace.addEventListener('click', () => applyOutline('replace'));
+  const append = h('button', { class: 'btn', type: 'button' }, '追加到大纲末尾');
+  append.addEventListener('click', () => applyOutline('append'));
+  const again = h('button', { class: 'btn ghost', type: 'button' }, '重新生成');
+  again.addEventListener('click', runImport);
+  const applyBar = h('div', { class: 'imp-apply' }, replace, append, again,
+    h('span', { class: 'help' }, hasOld
+      ? (withParas ? `替换时，已经写了段落的 ${withParas} 个旧章节会保留在新大纲之后，段落不会丢失；可以用段落下方的「移到…」把它们移到新章节。` : '替换会清空当前大纲。')
+      : '【】里是需要你补充的具体内容。'));
+  box.replaceChildren(
+    applyBar,
+    r.analysis.length || r.common ? h('div', { class: 'imp-analysis' },
+      h('h4', {}, '参考文章的论证逻辑'),
+      r.analysis.length ? h('ol', {}, r.analysis.map(a => h('li', {}, a.source ? h('b', {}, a.source) : null, a.source ? '：' : '', a.structure))) : null,
+      r.common ? h('p', { class: 'imp-common' }, h('b', {}, '可以借鉴的组织方式：'), r.common) : null) : null,
+    h('div', { class: 'imp-outline' },
+      h('h4', {}, `建议的大纲 · ${r.sections.length} 节`),
+      h('ol', { class: 'imp-secs' }, r.sections.map((s, i) => h('li', {},
+        h('div', { class: 'imp-sec-t' }, h('span', { class: 'imp-sec-n' }, '§' + (i + 1)), h('b', {}, s.titleZh || '未命名'), s.titleEn ? h('i', {}, s.titleEn) : null),
+        s.purpose ? h('div', { class: 'imp-purpose' }, s.purpose) : null,
+        h('ul', {}, s.points.map(pt => h('li', {}, withSlots(pt)))))))),
+  );
+  box.hidden = false;
+  box.scrollIntoView({ block: 'nearest', behavior: reduceMotion ? 'auto' : 'smooth' });
+}
+function applyOutline(mode) {
+  const r = imp.result; if (!r || readOnly) return;
+  const fresh = r.sections.map(s => newSection(s.titleZh || '未命名', s.titleEn, s.points.length ? s.points : [''], s.purpose));
+  let kept = 0;
+  if (mode === 'replace') {
+    const keep = paper.order.filter(id => sections[id] && sections[id].paragraphs.length);
+    paper.order.filter(id => !keep.includes(id)).forEach(id => { delete sections[id]; lsDel('pd:comp:' + id); touchSec(id); });
+    kept = keep.length;
+    const newTitles = new Set(fresh.map(s => s.titleZh.trim()));
+    keep.forEach(id => { const o = sections[id]; if (newTitles.has(o.titleZh.trim())) { o.titleZh = o.titleZh.trim() + '（旧）'; touchSec(id); } });
+    fresh.forEach(s => { sections[s.id] = s; touchSec(s.id); });
+    paper.order = [...fresh.map(s => s.id), ...keep];
+  } else {
+    fresh.forEach(s => { sections[s.id] = s; touchSec(s.id); });
+    paper.order.push(...fresh.map(s => s.id));
+  }
+  touchMeta();
+  activeId = fresh[0].id; lsSet(activeKey(), activeId);
+  imp.result = null; $('#impResult').hidden = true;
+  togglePanel(null);
+  renderOutline(); renderEditor();
+  toast(mode === 'replace'
+    ? `已换成新大纲，共 ${fresh.length} 节。` + (kept ? `有段落的 ${kept} 个旧章节保留在最后。` : '')
+    : `已在大纲末尾追加 ${fresh.length} 节。`);
 }
 
 /* ================= export ================= */
